@@ -74,6 +74,13 @@ client.on('messageCreate', async message => {
             const result = await response.response.text();
             message.reply(result);
         } catch (error) {
+            if (error.status === 429) {
+            console.error('Rate limit exceeded:', error);
+            message.reply('抱歉，目前請求太多，請稍後再試');
+            } else if (error.status === 503) {
+            console.error('Service unavailable:', error);
+            message.reply('抱歉，服務暫時不可用，請稍後再試');
+            } else {
             console.error('Error:', error);
             message.reply('回應時發生錯誤,請稍後再試');
         }
