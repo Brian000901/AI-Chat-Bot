@@ -60,7 +60,7 @@ client.on(Events.InteractionCreate, async interaction => {
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_TOKEN);
 const model = genAI.getGenerativeModel({ model: process.env.MODEL });
 client.on('messageCreate', async message => {
-    if (message.author.bot) return;
+    if (message.author.id === client.user.id) return;
     const db = new JSONdb('./db/channels.json');
     const channel = db.get('channel');
     if (!channel || message.channel.id !== channel) {
@@ -69,20 +69,23 @@ client.on('messageCreate', async message => {
         try {
             // Show typing indicator
             message.channel.sendTyping();
-            
             const response = await model.generateContent(message.content);
             const result = await response.response.text();
-            message.reply(result);
+            if (result.length > 2000) {
+                message.reply('錯誤: 超出Discord訊息字元限制(2000)');
+            } else {
+                message.reply(result);
+            }
         } catch (error) {
             if (error.status === 429) {
             console.error('Rate limit exceeded:', error);
-            message.reply('抱歉，目前請求太多，請稍後再試');
+            message.reply('抱歉，目前請求太多(429)，請稍後再試');
             } else if (error.status === 503) {
             console.error('Service unavailable:', error);
-            message.reply('抱歉，服務暫時不可用，請稍後再試');
+            message.reply('抱歉，服務暫時不可用(503)，請稍後再試');
             } else {
             console.error('Error:', error);
-            message.reply('回應時發生錯誤,請稍後再試');
+            message.reply(`回應時發生錯誤(${error.status}),請稍後再試`);
         }
     }
 }});
