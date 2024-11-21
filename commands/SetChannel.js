@@ -12,7 +12,7 @@ module.exports = {
             return await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
         }
         
-        const channels = db.get('channels') || [];
+        let channels = db.get('channels') || [];
         if (channels.includes(interaction.channelId)) {
             return await interaction.reply({ content: '這個頻道已被設定', ephemeral: true });
         }
