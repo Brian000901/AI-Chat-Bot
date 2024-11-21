@@ -58,7 +58,7 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_TOKEN);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: process.env.MODEL });
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
     const db = new JSONdb('./db/channels.json');
