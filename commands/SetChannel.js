@@ -11,7 +11,14 @@ module.exports = {
         if (interaction.user.id !== '810409750625386497' && !interaction.member.permissions.has('Administrator')) {
             return await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
         }
-        db.set('channel', interaction.channelId);
-        await interaction.reply(`Channel set to <#${interaction.channelId}>`);
+        
+        const channels = db.get('channels') || [];
+        if (channels.includes(interaction.channelId)) {
+            return await interaction.reply({ content: '這個頻道已被設定', ephemeral: true });
+        }
+
+        channels.push(interaction.channelId);
+        db.set('channels', channels);
+        await interaction.reply(`成功設定頻道: <#${interaction.channelId}>`);
     }
 };

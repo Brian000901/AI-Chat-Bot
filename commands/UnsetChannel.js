@@ -12,11 +12,15 @@ module.exports = {
             return await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
         }
         
-        if (!db.has('channel')) {
-            return await interaction.reply({ content: 'No channel is currently set.', ephemeral: true });
+        let channels = db.get('channels') || [];
+        
+        if (!channels.includes(interaction.channelId)) {
+            return await interaction.reply({ content: '當前頻道未被設定', ephemeral: true });
         }
 
-        db.delete('channel');
-        await interaction.reply({ content: 'Channel has been unset.', ephemeral: true });
+        channels = channels.filter(channelId => channelId !== interaction.channelId);
+        db.set('channels', channels);
+        
+        await interaction.reply({ content: '當前頻道已取消設定' });
     }
 };

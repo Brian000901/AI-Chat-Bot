@@ -62,8 +62,8 @@ const model = genAI.getGenerativeModel({ model: process.env.MODEL });
 client.on('messageCreate', async message => {
     if (message.author.id === client.user.id) return;
     const db = new JSONdb('./db/channels.json');
-    const channel = db.get('channel');
-    if (!channel || message.channel.id !== channel) {
+    const channels = db.get('channels') || [];
+    if (!channels || !channels.includes(message.channel.id)) {
         return;
     } else {
         try {
@@ -85,7 +85,7 @@ client.on('messageCreate', async message => {
             message.reply('抱歉，服務暫時不可用(503)，請稍後再試');
             } else {
             console.error('Error:', error);
-            message.reply(`回應時發生錯誤(${error.status}),請稍後再試`);
+            message.reply(`回應時發生錯誤(${error.status || '未知'}),請稍後再試`);
         }
     }
 }});
