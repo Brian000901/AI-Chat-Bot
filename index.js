@@ -85,6 +85,6 @@ client.on('messageCreate', async message => {
             message.reply('回應時發生錯誤,請稍後再試');
         }
     }
-});
+}});
 
 client.login(process.env.TOKEN);
