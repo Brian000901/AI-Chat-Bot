@@ -63,7 +63,7 @@ client.on('messageCreate', async message => {
     if (message.author.id === client.user.id) return;
     const db = new JSONdb('./db/channels.json');
     const channels = db.get('channels') || [];
-    if (!channels || !channels.includes(message.channel.id && !message.content.includes('process.env.CLIENT_ID'))) {
+    if (!channels || !channels.includes(message.channel.id) && !message.content.includes(process.env.CLIENT_ID)) {
         return;
     } else {
         try {
