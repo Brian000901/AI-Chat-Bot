@@ -64,6 +64,11 @@ const model = genAI.getGenerativeModel({ model: process.env.MODEL });
 let history = {};
 
 client.on('messageCreate', async message => {
+    if (message.content === '!reset') {
+        history[message.channel.id] = [];
+        message.reply('已重置對話記錄');
+        return;
+    }
     if (message.author.id === client.user.id) return;
     const db = new JSONdb('./db/channels.json');
     const channels = db.get('channels') || [];
@@ -121,7 +126,7 @@ client.on('messageCreate', async message => {
                     ],
                 }
             );
-            if (history[message.channel.id].length > 10) {
+            if (history[message.channel.id].length > 40) {
                 history[message.channel.id].shift();
                 history[message.channel.id].shift();
             }
