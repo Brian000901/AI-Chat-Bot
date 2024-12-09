@@ -105,9 +105,9 @@ client.on('messageCreate', async message => {
             if (result.length > 2000) {
                 message.reply('錯誤: 超出Discord訊息字元限制(2000)');
             } else if (result.includes('@everyone')){
-                message.reply('錯誤: 請避免使用@everyone');
+                message.reply('錯誤: 請避免使用`@everyone`');
             } else if (result.includes('@here')){
-                message.reply('錯誤: 請避免使用@here');
+                message.reply('錯誤: 請避免使用`@here`');
             } else {
                 message.reply(result);
             }
