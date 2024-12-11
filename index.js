@@ -82,7 +82,7 @@ client.on('messageCreate', async message => {
         return;
     }
     if (message.channel.id === '1308696679528140810' && message.content.includes('男娘') || message.content.includes('齊哥') || message.content.includes('游方齊') || message.content.includes('<@940831027922874399>') && message.content.includes('男娘')) {
-        message.reply('https://cdn.discordapp.com/emojis/1120351991378497616.webp?size=48')
+        message.reply('https://cdn.discordapp.com/emojis/1120352071187709972.webp?size=48')
         return;
     }
     if (message.author.id === client.user.id) return;
