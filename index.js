@@ -65,6 +65,7 @@ const model = genAI.getGenerativeModel({ model: process.env.MODEL });
 let history = {};
 
 client.on('messageCreate', async message => {
+    if (message.author.id === client.user.id) return;
     if (message.content === '!reset') {
         history[message.channel.id] = [];
         message.reply('已重置對話記錄');
@@ -81,11 +82,6 @@ client.on('messageCreate', async message => {
         console.log(process.env.MODEL);
         return;
     }
-    if (message.channel.id === '1308696679528140810' && message.content.includes('男娘') || message.content.includes('蘿莉') || message.content.includes('女裝') ||message.content.includes('齊哥') || message.content.includes('游方齊') || message.content.includes('<@940831027922874399>') && message.content.includes('男娘')) {
-        message.reply('https://cdn.discordapp.com/emojis/1120352071187709972.webp?size=48')
-        return;
-    }
-    if (message.author.id === client.user.id) return;
     const db = new JSONdb('./db/channels.json');
     const channels = db.get('channels') || [];
 
@@ -167,3 +163,15 @@ client.on('messageCreate', async message => {
 }});
 
 client.login(process.env.TOKEN);
+
+process.on("unhandledRejection", async (error) => {
+        console.error(error.stack || error);
+});
+
+process.on("uncaughtException", async (error) => {
+        console.error(error.stack);
+});
+
+process.on("uncaughtExceptionMonitor", async (error) => {
+        console.error(error.stack);
+});
