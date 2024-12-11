@@ -157,7 +157,7 @@ client.on('messageCreate', async message => {
             message.reply('服務暫時不可用(503)，請稍後再試');
             } else {
             console.error('Error:', error);
-            message.reply(`回應時發生錯誤(${error.status || error}),請稍後再試`);
+            message.reply(`回應時發生錯誤(${error.status || error})`);
         }
     }
 }});
