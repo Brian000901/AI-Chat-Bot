@@ -142,7 +142,7 @@ client.on('messageCreate', async message => {
                     ],
                 }
             );
-            if (history[message.channel.id].length > 40) {
+            if (history[message.channel.id].length > 500) {
                 history[message.channel.id].shift();
                 history[message.channel.id].shift();
             }
