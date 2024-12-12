@@ -60,7 +60,6 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_TOKEN);
-let model = genAI.getGenerativeModel({ model: process.env.MODEL });
 
 let history = {};
 
@@ -80,9 +79,9 @@ client.on('messageCreate', async message => {
         process.env.MODEL = newModel;
         message.reply(`已切換模型為: ${newModel}`);
         console.log(`\x1b[32mChanged model: ${process.env.MODEL}\x1b[0m`);
-        model = genAI.getGenerativeModel({ model: process.env.MODEL });
         return;
     }
+    const model = genAI.getGenerativeModel({ model: process.env.MODEL });
     const db = new JSONdb('./db/channels.json');
     const channels = db.get('channels') || [];
 
