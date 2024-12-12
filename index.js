@@ -93,7 +93,7 @@ client.on('messageCreate', async message => {
         responseMimeType: "text/plain",
     };
 
-    if (!channels || !channels.includes(message.channel.id) && !message.mentions.has(client.user) && !(message.channel.message.cache.get(message.reference.messageID).author.id === client.user.id)) {
+    if (!channels || !channels.includes(message.channel.id) && !message.mentions.has(client.user)) {
         return;
     } else {
         try {
