@@ -65,6 +65,7 @@ let history = {};
 
 client.on('messageCreate', async message => {
     if (message.author.id === client.user.id) return;
+    if (message.content.startsWith('-#')) return;
     if (message.content === '!reset') {
         history[message.channel.id] = [];
         message.reply('已重置對話記錄');
