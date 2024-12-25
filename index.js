@@ -205,7 +205,9 @@ client.on('messageCreate', async message => {
             }
             if (imagePart !== null) {
                 console.log(`\x1b[36m[${message.author.username}]\x1b[0m: ${message.content} \x1b[32m(image detected)\x1b[0m`);
-            console.log(`\x1b[36m[${message.author.username}]\x1b[0m: ${message.content}`);
+            } else {
+                console.log(`\x1b[36m[${message.author.username}]\x1b[0m: ${message.content}`);
+            }
             console.log(`\x1b[36m[model]\x1b[0m: ${result.replace(/\n/g, ' ')} \x1b[90m//history length: ${history[message.channel.id].length}\x1b[0m`);
         } catch (error) {
             if (error.status === 429) {
