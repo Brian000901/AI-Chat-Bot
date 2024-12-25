@@ -150,17 +150,17 @@ client.on('messageCreate', async message => {
 
             let imagePart = null;
 
-            if (message.attachments.size > 0 && message.attachments.first().name.endsWith('.jpg') || message.attachments.first().name.endsWith('.png')) {
-                const imageResp = await fetch(
-                    message.attachments.first().url
-                )
-                    .then((response) => response.arrayBuffer());
-                imagePart = {
-                    inlineData: {
-                        data: Buffer.from(imageResp).toString("base64"),
-                        mimeType: "image/jpeg",
-                    }
-                };
+            if (message.attachments.size > 0) {
+                if (message.attachments.first().name.endsWith('.jpg') || message.attachments.first().name.endsWith('.png')) {
+                    const imageResp = await fetch(message.attachments.first().url)
+                        .then((response) => response.arrayBuffer());
+                    imagePart = {
+                        inlineData: {
+                            data: Buffer.from(imageResp).toString("base64"),
+                            mimeType: "image/jpeg",
+                        },
+                    };
+                }
             }
 
             message.channel.sendTyping();
