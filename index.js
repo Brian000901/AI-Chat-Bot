@@ -93,6 +93,16 @@ client.on('messageCreate', async message => {
         return;
     }
 
+    if (message.content.startsWith('!pop') {
+        const count = message.content.split(' ')[2];
+        if (Number.isInteger(count) && count < history[message.channel.id].length) {
+            history[message.channel.id].pop(count)
+            message.reply(`已清除最後${count}則記錄`)
+        } else {
+            message.reply('參數錯誤')
+        }
+    }
+
     if (message.content.startsWith('!model') && message.author.id === '810409750625386497') {
         const envPath = '.env';
         const envContent = fs.readFileSync(envPath, 'utf8');
