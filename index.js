@@ -102,7 +102,7 @@ client.on('messageCreate', async message => {
             message.reply(`已清除最後${count}則記錄`);
             return;
         } else {
-            message.reply('參數錯誤');
+            message.reply('發生了某種錯誤');
             return;
         }
     }
