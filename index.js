@@ -95,7 +95,7 @@ client.on('messageCreate', async message => {
 
     if (message.content.startsWith('!pop')) {
         const count = parseInt(message.content.split(' ')[1], 10);
-        if (Number.isInteger(count) && history[message.channel.id] && count < history[message.channel.id].length) {
+        if (Number.isInteger(count) && history[message.channel.id] && count <= history[message.channel.id].length) {
             for (let i = 0; i < count; i++) {
                 history[message.channel.id].pop();
             }
