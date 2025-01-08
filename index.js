@@ -93,13 +93,15 @@ client.on('messageCreate', async message => {
         return;
     }
 
-    if (message.content.startsWith('!pop') {
-        const count = message.content.split(' ')[2];
+    if (message.content.startsWith('!pop')) {
+        const count = parseInt(message.content.split(' ')[1], 10);
         if (Number.isInteger(count) && count < history[message.channel.id].length) {
-            history[message.channel.id].pop(count)
-            message.reply(`已清除最後${count}則記錄`)
+            for (let i = 0; i < count; i++) {
+                history[message.channel.id].pop();
+            }
+            message.reply(`已清除最後${count}則記錄`);
         } else {
-            message.reply('參數錯誤')
+            message.reply('參數錯誤');
         }
     }
 
