@@ -100,8 +100,10 @@ client.on('messageCreate', async message => {
                 history[message.channel.id].pop();
             }
             message.reply(`已清除最後${count}則記錄`);
+            return;
         } else {
             message.reply('參數錯誤');
+            return;
         }
     }
 
