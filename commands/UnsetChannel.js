@@ -9,9 +9,10 @@ module.exports = {
         .setDescription('Unset the channel for the bot to listen to'),
     async execute(interaction) {
         if (interaction.user.id !== '810409750625386497' && !interaction.member.permissions.has('Administrator')) {
-            return await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+            return await interaction.reply({ content: '你沒有權限使用此指令.', ephemeral: true });
         }
         
+        db.JSON();
         let channels = db.get('channels') || [];
         
         if (!channels.includes(interaction.channelId)) {

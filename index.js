@@ -14,19 +14,16 @@ client.once('ready', () => {
 client.commands = new Collection();
 const commandFiles = fs.readdirSync(path.join(__dirname, 'commands')).filter(file => file.endsWith('.js'));
 
-// 將每個指令載入到 client.commands 集合中
 for (const file of commandFiles) {
     const command = require(`./commands/${file}`);
     client.commands.set(command.data.name, command);
 }
 
-// 將所有指令的 data 屬性轉換為 JSON 格式
 const commands = commandFiles.map(file => {
     const command = require(`./commands/${file}`);
     return command.data.toJSON();
 });
 
-// 創建 REST 實例並設置 token
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
 (async () => {
@@ -70,6 +67,7 @@ client.on('messageCreate', async message => {
         const ban = message.content.split(' ')[1];
         const db = new JSONdb('./db/banReset.json');
         if (ban === 'ban' && message.author.id === '810409750625386497') {
+            db.JSON();
             const userPart = message.content.split(' ')[2];
             if (!userPart) {
                 message.reply('請提供用戶ID');
@@ -124,20 +122,13 @@ client.on('messageCreate', async message => {
     }
     const model = genAI.getGenerativeModel({
         model: process.env.MODEL,
-            model: "gemini-1.5-flash",
-            systemInstruction: fs.readFileSync('./prompt.md', 'utf8'),
-            safetySettings: [
-              { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-              {
-                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                threshold: "BLOCK_NONE",
-              },
-              {
-                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold: "BLOCK_NONE",
-              },
-              { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-            ],
+        systemInstruction: fs.readFileSync('./prompt.md', 'utf8'),
+        safetySettings: [
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        ],
     });
     const db = new JSONdb('./db/channels.json');
     const channels = db.get('channels') || [];
