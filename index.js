@@ -192,6 +192,7 @@ client.on('messageCreate', async message => {
                         {
                             text: `[${message.author.username}]: ${message.content}`,
                         },
+                        ...(imagePart !== null ? imagePart : []),
                     ],
                 },
                 {
