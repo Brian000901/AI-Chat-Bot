@@ -156,15 +156,18 @@ client.on('messageCreate', async message => {
             let imagePart = null;
 
             if (message.attachments.size > 0) {
-                if (message.attachments.first().name.endsWith('.jpg') || message.attachments.first().name.endsWith('.png')) {
-                    const imageResp = await fetch(message.attachments.first().url)
-                        .then((response) => response.arrayBuffer());
-                    imagePart = {
-                        inlineData: {
-                            data: Buffer.from(imageResp).toString("base64"),
-                            mimeType: "image/jpeg",
-                        },
-                    };
+                const attachments = message.attachments.filter(attachment => attachment.name.endsWith('.jpg') || attachment.name.endsWith('.png'));
+                if (attachments.size > 0) {
+                    imagePart = [];
+                    for (const attachment of attachments.values()) {
+                        const imageResp = await fetch(attachment.url).then((response) => response.arrayBuffer());
+                        imagePart.push({
+                            inlineData: {
+                                data: Buffer.from(imageResp).toString("base64"),
+                                mimeType: "image/jpeg",
+                            },
+                        });
+                    }
                 }
             }
 

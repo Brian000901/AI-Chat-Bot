@@ -16,8 +16,7 @@ const db = new JSONdb(dbPath);
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('setchannel')
-        .setDescription('Set the channel for the bot to listen to')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator), 
+        .setDescription('Set the channel for the bot to listen to'),
     async execute(interaction) {
         if (interaction.user.id !== '810409750625386497' && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return await interaction.reply({ content: '你沒有權限使用此指令.', ephemeral: true });
