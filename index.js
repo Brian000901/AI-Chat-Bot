@@ -64,28 +64,6 @@ client.on('messageCreate', async message => {
     if (message.author.id === client.user.id) return;
     if (message.content.startsWith('-#')) return;
     if (message.content.startsWith('!reset')) {
-        const ban = message.content.split(' ')[1];
-        const db = new JSONdb('./db/banReset.json');
-        if (ban === 'ban' && message.author.id === '810409750625386497') {
-            db.JSON();
-            const userPart = message.content.split(' ')[2];
-            if (!userPart) {
-                message.reply('請提供用戶ID');
-                return;
-            }
-            const user = userPart.replace(/[<@!>]/g, '');
-            const users = db.get('users') || [];
-            if (users.includes(user)) {
-                message.reply('此用戶已被封鎖');
-                return;
-            }
-            users.push(user);
-            db.set('users', users);
-        }
-        const bannedUsers = db.get('users') || [];
-        if (bannedUsers.includes(message.author.id)) {
-            return;
-        }
         history[message.channel.id] = [];
         message.reply('已重置對話記錄');
         return;
