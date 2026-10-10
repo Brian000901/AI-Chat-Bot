@@ -11,8 +11,6 @@ if (!fs.existsSync(dbPath)) {
     fs.writeFileSync(dbPath, '{}');
 }
 
-const db = new JSONdb(dbPath);
-
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('setchannel')
@@ -22,7 +20,7 @@ module.exports = {
             return await interaction.reply({ content: '你沒有權限使用此指令.', ephemeral: true });
         }
 
-        db.JSON();
+        const db = new JSONdb(dbPath);
         let channels = db.get('channels') || [];
         if (channels.includes(interaction.channelId)) {
             return await interaction.reply({ content: '這個頻道已被設定', ephemeral: true });

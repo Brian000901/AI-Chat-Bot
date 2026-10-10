@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const JSONdb = require('simple-json-db');
 const path = require('path');
-const db = new JSONdb(path.join(__dirname, '../db/channels.json'));
+const dbPath = path.join(__dirname, '../db/channels.json');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -12,7 +12,7 @@ module.exports = {
             return await interaction.reply({ content: '你沒有權限使用此指令.', ephemeral: true });
         }
         
-        db.JSON();
+        const db = new JSONdb(dbPath);
         let channels = db.get('channels') || [];
         
         if (!channels.includes(interaction.channelId)) {
