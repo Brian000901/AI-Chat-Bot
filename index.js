@@ -108,7 +108,7 @@ client.on('messageCreate', async message => {
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
         ],
     });
-    const db = new JSONdb('./db/channels.json');
+    const db = new JSONdb(path.join(__dirname, 'db/channels.json'));
     const channels = db.get('channels') || [];
 
     const generationConfig = {
