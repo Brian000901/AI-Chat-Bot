@@ -1,224 +1,134 @@
-const { Client, GatewayIntentBits, Collection, Events, REST, Routes,} = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Events, REST, Routes, MessageFlags } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleAIFileManager } = require('@google/generative-ai/server');
 const fs = require('fs');
 const path = require('path');
 const JSONdb = require('simple-json-db');
+const { splitMessage, createQueue, createSender, canUse, canSend } = require('./lib/runtime');
+const { buildParts, resolveParts } = require('./lib/attachments');
+const { HistoryStore, fitHistory } = require('./lib/history');
+const { WEB_TOOLS, WEB_INSTRUCTION } = require('./lib/web');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-require("dotenv").config();
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
-
-client.once('ready', () => {
-    console.log(`Ready! Logged in as ${client.user.tag}`);
-});
-
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_TOKEN);
+const fileManager = new GoogleAIFileManager(process.env.GEMINI_TOKEN, { timeout: 120000 });
+const history = new HistoryStore(path.join(__dirname, 'history'));
+const queue = createQueue();
+const send = createSender();
+const dbPath = path.join(__dirname, 'db/channels.json');
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+const db = new JSONdb(dbPath);
 client.commands = new Collection();
-const commandFiles = fs.readdirSync(path.join(__dirname, 'commands')).filter(file => file.endsWith('.js'));
-
-for (const file of commandFiles) {
-    const command = require(`./commands/${file}`);
+for (const file of fs.readdirSync(path.join(__dirname, 'commands')).filter(file => file.endsWith('.js'))) {
+    const command = require(path.join(__dirname, 'commands', file));
     client.commands.set(command.data.name, command);
 }
+const context = { history, db, setModel(name) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,119}$/.test(name)) throw new Error('模型名稱格式不正確。');
+    const envPath = path.join(__dirname, '.env');
+    const original = fs.readFileSync(envPath, 'utf8');
+    const updated = /^MODEL\s*=.*$/m.test(original)
+        ? original.replace(/^MODEL\s*=.*$/m, `MODEL='${name}'`)
+        : `${original}\nMODEL='${name}'\n`;
+    fs.writeFileSync(envPath, updated);
+    process.env.MODEL = name;
+} };
 
-const commands = commandFiles.map(file => {
-    const command = require(`./commands/${file}`);
-    return command.data.toJSON();
-});
-
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-
-(async () => {
+client.once(Events.ClientReady, async () => {
+    console.log(`Ready! Logged in as ${client.user.tag}; model: ${process.env.MODEL}`);
     try {
-        console.log(`Started refreshing ${commands.length} application (/) commands.`);
-        const data = await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
-            { body: commands },
-        );
-        console.log(`Successfully reloaded ${commands.length} application (/) commands.`);
-    } catch (error) {
-        console.error(error);
-    }
-})();
-
-console.log(`\x1b[32mUsing model: ${process.env.MODEL}\x1b[0m`);
+        const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID || client.user.id), {
+            body: [...client.commands.values()].map(command => command.data.toJSON()),
+        });
+        console.log('Slash commands registered.');
+    } catch (error) { console.error('Command registration failed:', error.message); }
+});
 
 client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isCommand()) return;
-
+    if (!interaction.isChatInputCommand()) return;
     const command = client.commands.get(interaction.commandName);
-
     if (!command) return;
-
     try {
-        await command.execute(interaction);
+        if (!canUse(interaction, command.access)) {
+            await interaction.reply({ content: '你沒有權限使用此指令，或此指令無法在私訊使用。', flags: MessageFlags.Ephemeral });
+            return;
+        }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        history.bind(interaction.channelId, interaction.guildId);
+        await queue(interaction.channelId, () => command.execute(interaction, context));
     } catch (error) {
-        console.error(error);
-        await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
-    }
-});
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_TOKEN);
-
-let history = {};
-
-client.on('messageCreate', async message => {
-    if (message.author.id === client.user.id) return;
-    if (message.content.startsWith('-#')) return;
-    if (message.content.startsWith('!reset')) {
-        history[message.channel.id] = [];
-        message.reply('已重置對話記錄');
-        return;
-    }
-
-    if (message.content.startsWith('!pop')) {
-        const count = parseInt(message.content.split(' ')[1], 10);
-        if (Number.isInteger(count) && history[message.channel.id] && count <= history[message.channel.id].length) {
-            for (let i = 0; i < count; i++) {
-                history[message.channel.id].pop();
-            }
-            message.reply(`已清除最後${count}則記錄`);
-            return;
-        } else {
-            message.reply('發生了某種錯誤');
-            return;
-        }
-    }
-
-    if (message.content.startsWith('!model') && message.author.id === '810409750625386497') {
-        const envPath = '.env';
-        const envContent = fs.readFileSync(envPath, 'utf8');
-        const newModel = message.content.split(' ')[1];
-        if (!newModel || newModel === undefined) {
-            message.reply(`目前模型: ${process.env.MODEL}`);
-            return;
-        }
-        const updatedContent = envContent.replace(/MODEL=.*/, `MODEL='${newModel}'`);
-        fs.writeFileSync(envPath, updatedContent);
-        process.env.MODEL = newModel;
-        message.reply(`已切換模型為: ${newModel}`);
-        console.log(`\x1b[32mChanged model: ${process.env.MODEL}\x1b[0m`);
-        return;
-    }
-    const model = genAI.getGenerativeModel({
-        model: process.env.MODEL,
-        systemInstruction: fs.readFileSync('./prompt.md', 'utf8'),
-        safetySettings: [
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-        ],
-    });
-    const db = new JSONdb(path.join(__dirname, 'db/channels.json'));
-    const channels = db.get('channels') || [];
-
-    const generationConfig = {
-        temperature: 1,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 4096,
-        responseMimeType: "text/plain",
-        thinkingConfig: {
-        	thinkingLevel: "low"
-    	}
-    };
-
-    if (!channels || !channels.includes(message.channel.id) && !message.mentions.has(client.user)) {
-        return;
-    } else {
+        console.error('Command failed:', error.message);
+        const content = '指令執行失敗，請檢查參數或稍後再試。';
         try {
-            if (!history[message.channel.id]) history[message.channel.id] = [];
-            const chatSession = model.startChat({
-                generationConfig,
-                history: [
-                  ...history[message.channel.id],
-                ],
-            });
-
-            let imagePart = null;
-
-            if (message.attachments.size > 0) {
-                const attachments = message.attachments.filter(attachment => attachment.name.endsWith('.jpg') || attachment.name.endsWith('.png'));
-                if (attachments.size > 0) {
-                    imagePart = [];
-                    for (const attachment of attachments.values()) {
-                        const imageResp = await fetch(attachment.url).then((response) => response.arrayBuffer());
-                        imagePart.push({
-                            inlineData: {
-                                data: Buffer.from(imageResp).toString("base64"),
-                                mimeType: "image/jpeg",
-                            },
-                        });
-                    }
-                }
-            }
-
-            message.channel.sendTyping();
-            let response;
-            if (imagePart !== null) {
-                response = await chatSession.sendMessage([`[${message.author.username}]: ${message.content}`, imagePart]);
-            } else {
-                response = await chatSession.sendMessage([`[${message.author.username}]: ${message.content}`]);
-            }
-            const result = await response.response.text();
-            if (result.length > 2000) {
-                message.reply('錯誤: 超出Discord訊息字元限制(2000)');
-            } else {
-                message.reply(result, { allowedMentions: { parse: ['users'] } });
-            }
-
-            history[message.channel.id].push(
-                {
-                    role: "user",
-                    parts: [
-                        {
-                            text: `[${message.author.username}]: ${message.content}`,
-                        },
-                        ...(imagePart !== null ? imagePart : []),
-                    ],
-                },
-                {
-                    role: "model",
-                    parts: [
-                        {
-                            text: result,
-                        },
-                    ],
-                }
-            );
-            if (history[message.channel.id].length > 500) {
-                history[message.channel.id].shift();
-                history[message.channel.id].shift();
-            }
-            if (imagePart !== null) {
-                console.log(`\x1b[36m[${message.author.username}]\x1b[0m: ${message.content} \x1b[32m(image detected)\x1b[0m`);
-            } else {
-                console.log(`\x1b[36m[${message.author.username}]\x1b[0m: ${message.content}`);
-            }
-            console.log(`\x1b[36m[model]\x1b[0m: ${result.replace(/\n/g, ' ')} \x1b[90m//history length: ${history[message.channel.id].length}\x1b[0m`);
-        } catch (error) {
-            if (error.status === 429) {
-            console.error('Rate limit exceeded:', error);
-            message.reply('目前請求太多(429)，請稍後再試');
-            } else if (error.status === 503) {
-            console.error('Service unavailable:', error);
-            message.reply('服務暫時不可用(503)，請稍後再試');
-            } else {
-            console.error('Error:', error);
-            message.reply(`回應時發生錯誤(${error.status || error})`);
-        }
+            if (interaction.deferred || interaction.replied) await interaction.editReply({ content });
+            else await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+        } catch (replyError) { console.error('Command error reply failed:', replyError.message); }
     }
-}});
-
-client.login(process.env.TOKEN);
-
-process.on("unhandledRejection", async (error) => {
-        console.error(error.stack || error);
 });
 
-process.on("uncaughtException", async (error) => {
-        console.error(error.stack);
-});
+async function replyLong(message, text) {
+    const chunks = splitMessage(text || '模型未回傳文字，請換個方式提問。');
+    for (let index = 0; index < chunks.length; index++) {
+        const payload = { content: chunks[index], allowedMentions: { parse: [], repliedUser: false } };
+        await send(() => index === 0 ? message.reply({ ...payload, failIfNotExists: false }) : message.channel.send(payload));
+    }
+}
 
-process.on("uncaughtExceptionMonitor", async (error) => {
-        console.error(error.stack);
+client.on(Events.MessageCreate, message => {
+    if (!message.inGuild() || message.author.bot || message.webhookId || message.content.startsWith('-#')) return;
+    if (!(db.get('channels') || []).includes(message.channelId) && !message.mentions.users.has(client.user.id)) return;
+    queue(message.channelId, async () => {
+        history.bind(message.channelId, message.guildId);
+        const member = message.guild.members.me || await message.guild.members.fetchMe();
+        if (!canSend(message.channel, member)) return;
+        try {
+            if (/^!(reset|pop|model)(?:\s|$)/i.test(message.content)) {
+                await replyLong(message, '管理指令已改為 /reset、/pop、/model，請使用斜線指令。');
+                return;
+            }
+            // Reject unsupported/oversized attachments before calling the paid model API.
+            let parts;
+            try { parts = await buildParts(message.attachments, fileManager); }
+            catch (error) {
+                console.error('Attachment failed:', error.message);
+                await replyLong(message, error.status ? '附件服務暫時不可用，請稍後重傳。' : error.message);
+                return;
+            }
+            await message.channel.sendTyping();
+            const model = genAI.getGenerativeModel({
+                model: process.env.MODEL,
+                systemInstruction: fs.readFileSync(path.join(__dirname, 'prompt.md'), 'utf8') + '\n\n' + WEB_INSTRUCTION,
+                tools: WEB_TOOLS,
+                safetySettings: ['HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT', 'HARM_CATEGORY_HARASSMENT']
+                    .map(category => ({ category, threshold: 'BLOCK_NONE' })),
+            }, { timeout: 120000 });
+            const previous = fitHistory(history.get(message.channelId) || [], parts);
+            const fileCache = new Map();
+            const apiHistory = [];
+            for (const record of previous) apiHistory.push({ ...record, parts: await resolveParts(record.parts, fileManager, fileCache) });
+            const chat = model.startChat({
+                generationConfig: { temperature: 1, topP: 0.95, topK: 40, maxOutputTokens: 8192, responseMimeType: 'text/plain' },
+                history: apiHistory,
+            });
+            const text = `[${message.author.username}]: ${message.content || '請分析附件。'}`;
+            const response = await chat.sendMessage([{ text }, ...await resolveParts(parts, fileManager, fileCache)]);
+            const result = response.response.text();
+            if (result) {
+                const updated = [...(history.get(message.channelId) || []), { role: 'user', parts: [{ text }, ...parts] },
+                    { role: 'model', parts: [{ text: result }] }];
+                history.set(message.channelId, updated);
+            }
+            await replyLong(message, result);
+        } catch (error) {
+            console.error('Message processing failed:', error.message);
+            const content = error.status === 429 ? '目前請求太多，請稍後再試。'
+                : error.status === 503 ? '模型服務暫時不可用，請稍後再試。'
+                : error.status === 400 ? '模型拒絕此請求，請檢查附件或上下文大小，並確認目前模型支援 Google Search 與 URL Context（兩項工具永久啟用）。'
+                : '回應失敗，請確認模型支援此附件格式，或稍後再試。';
+            await replyLong(message, content);
+        }
+    }).catch(error => console.error('Message handling failed:', error.message));
 });
+client.login(process.env.TOKEN).catch(error => { console.error('Login failed:', error.message); process.exitCode = 1; });
