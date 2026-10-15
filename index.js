@@ -115,8 +115,11 @@ client.on('messageCreate', async message => {
         temperature: 1,
         topP: 0.95,
         topK: 40,
-        maxOutputTokens: 8192,
+        maxOutputTokens: 4096,
         responseMimeType: "text/plain",
+        thinkingConfig: {
+        	thinkingLevel: "low"
+    	}
     };
 
     if (!channels || !channels.includes(message.channel.id) && !message.mentions.has(client.user)) {
