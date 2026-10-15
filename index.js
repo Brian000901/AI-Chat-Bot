@@ -1,3 +1,4 @@
+const { log } = require('./lib/logger');
 const { Client, GatewayIntentBits, Collection, Events, REST, Routes, MessageFlags } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { GoogleAIFileManager } = require('@google/generative-ai/server');
@@ -7,7 +8,7 @@ const JSONdb = require('simple-json-db');
 const { splitMessage, createQueue, createSender, canUse, canSend } = require('./lib/runtime');
 const { buildParts, resolveParts } = require('./lib/attachments');
 const { HistoryStore, fitHistory } = require('./lib/history');
-const { WEB_TOOLS, WEB_INSTRUCTION } = require('./lib/web');
+const { WEB_TOOLS, WEB_INSTRUCTION, logToolUse } = require('./lib/web');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
@@ -36,14 +37,14 @@ const context = { history, db, setModel(name) {
 } };
 
 client.once(Events.ClientReady, async () => {
-    console.log(`Ready! Logged in as ${client.user.tag}; model: ${process.env.MODEL}`);
+    log('success', 'Discord 已登入', { bot: client.user.tag, model: process.env.MODEL });
     try {
         const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
         await rest.put(Routes.applicationCommands(process.env.CLIENT_ID || client.user.id), {
             body: [...client.commands.values()].map(command => command.data.toJSON()),
         });
-        console.log('Slash commands registered.');
-    } catch (error) { console.error('Command registration failed:', error.message); }
+        log('success', '斜線指令註冊完成');
+    } catch (error) { log('error', 'Command registration failed:', error.message); }
 });
 
 client.on(Events.InteractionCreate, async interaction => {
@@ -59,12 +60,12 @@ client.on(Events.InteractionCreate, async interaction => {
         history.bind(interaction.channelId, interaction.guildId);
         await queue(interaction.channelId, () => command.execute(interaction, context));
     } catch (error) {
-        console.error('Command failed:', error.message);
+        log('error', 'Command failed:', error.message);
         const content = '指令執行失敗，請檢查參數或稍後再試。';
         try {
             if (interaction.deferred || interaction.replied) await interaction.editReply({ content });
             else await interaction.reply({ content, flags: MessageFlags.Ephemeral });
-        } catch (replyError) { console.error('Command error reply failed:', replyError.message); }
+        } catch (replyError) { log('error', 'Command error reply failed:', replyError.message); }
     }
 });
 
@@ -92,7 +93,7 @@ client.on(Events.MessageCreate, message => {
             let parts;
             try { parts = await buildParts(message.attachments, fileManager); }
             catch (error) {
-                console.error('Attachment failed:', error.message);
+                log('error', 'Attachment failed:', error.message);
                 await replyLong(message, error.status ? '附件服務暫時不可用，請稍後重傳。' : error.message);
                 return;
             }
@@ -114,6 +115,7 @@ client.on(Events.MessageCreate, message => {
             });
             const text = `[${message.author.username}]: ${message.content || '請分析附件。'}`;
             const response = await chat.sendMessage([{ text }, ...await resolveParts(parts, fileManager, fileCache)]);
+            logToolUse(response.response, { guildId: message.guildId, channelId: message.channelId, messageId: message.id });
             const result = response.response.text();
             if (result) {
                 const updated = [...(history.get(message.channelId) || []), { role: 'user', parts: [{ text }, ...parts] },
@@ -122,13 +124,13 @@ client.on(Events.MessageCreate, message => {
             }
             await replyLong(message, result);
         } catch (error) {
-            console.error('Message processing failed:', error.message);
+            log('error', 'Message processing failed:', error.message);
             const content = error.status === 429 ? '目前請求太多，請稍後再試。'
                 : error.status === 503 ? '模型服務暫時不可用，請稍後再試。'
                 : error.status === 400 ? '模型拒絕此請求，請檢查附件或上下文大小，並確認目前模型支援 Google Search 與 URL Context（兩項工具永久啟用）。'
                 : '回應失敗，請確認模型支援此附件格式，或稍後再試。';
             await replyLong(message, content);
         }
-    }).catch(error => console.error('Message handling failed:', error.message));
+    }).catch(error => log('error', 'Message handling failed:', error.message));
 });
-client.login(process.env.TOKEN).catch(error => { console.error('Login failed:', error.message); process.exitCode = 1; });
+client.login(process.env.TOKEN).catch(error => { log('error', 'Login failed:', error.message); process.exitCode = 1; });
