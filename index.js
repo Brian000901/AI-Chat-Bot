@@ -9,6 +9,8 @@ const { splitMessage, createQueue, createSender, canUse, canSend } = require('./
 const { buildParts, resolveParts } = require('./lib/attachments');
 const { HistoryStore, fitHistory } = require('./lib/history');
 const { WEB_TOOLS, WEB_INSTRUCTION, logToolUse } = require('./lib/web');
+const { buildMessageContext } = require('./lib/message-context');
+const { inspectError, errorMessage } = require('./lib/errors');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
@@ -81,23 +83,22 @@ client.on(Events.MessageCreate, message => {
     if (!message.inGuild() || message.author.bot || message.webhookId || message.content.startsWith('-#')) return;
     if (!(db.get('channels') || []).includes(message.channelId) && !message.mentions.users.has(client.user.id)) return;
     queue(message.channelId, async () => {
-        history.bind(message.channelId, message.guildId);
-        const member = message.guild.members.me || await message.guild.members.fetchMe();
-        if (!canSend(message.channel, member)) return;
+        let stage = 'discord_permissions';
         try {
+            history.bind(message.channelId, message.guildId);
+            const member = message.guild.members.me || await message.guild.members.fetchMe();
+            if (!canSend(message.channel, member)) return;
             if (/^!(reset|pop|model)(?:\s|$)/i.test(message.content)) {
+                stage = 'discord_send';
                 await replyLong(message, '管理指令已改為 /reset、/pop、/model，請使用斜線指令。');
                 return;
             }
-            // Reject unsupported/oversized attachments before calling the paid model API.
-            let parts;
-            try { parts = await buildParts(message.attachments, fileManager); }
-            catch (error) {
-                log('error', 'Attachment failed:', error.message);
-                await replyLong(message, error.status ? '附件服務暫時不可用，請稍後重傳。' : error.message);
-                return;
-            }
-            await message.channel.sendTyping();
+            stage = 'message_context';
+            const text = JSON.stringify(await buildMessageContext(message, client.user.id));
+            stage = 'attachment_upload';
+            const parts = await buildParts(message.attachments, fileManager);
+            await message.channel.sendTyping().catch(error => log('warn', 'Discord 輸入中提示失敗', { error: error.message }));
+            stage = 'generation_setup';
             const model = genAI.getGenerativeModel({
                 model: process.env.MODEL,
                 systemInstruction: fs.readFileSync(path.join(__dirname, 'prompt.md'), 'utf8') + '\n\n' + WEB_INSTRUCTION,
@@ -108,28 +109,34 @@ client.on(Events.MessageCreate, message => {
             const previous = fitHistory(history.get(message.channelId) || [], parts);
             const fileCache = new Map();
             const apiHistory = [];
+            stage = 'attachment_resolve';
             for (const record of previous) apiHistory.push({ ...record, parts: await resolveParts(record.parts, fileManager, fileCache) });
+            const currentParts = [{ text }, ...await resolveParts(parts, fileManager, fileCache)];
+            stage = 'generation';
             const chat = model.startChat({
                 generationConfig: { temperature: 1, topP: 0.95, topK: 40, maxOutputTokens: 8192, responseMimeType: 'text/plain' },
                 history: apiHistory,
             });
-            const text = `[${message.author.username}]: ${message.content || '請分析附件。'}`;
-            const response = await chat.sendMessage([{ text }, ...await resolveParts(parts, fileManager, fileCache)]);
+            const response = await chat.sendMessage(currentParts);
             logToolUse(response.response, { guildId: message.guildId, channelId: message.channelId, messageId: message.id });
             const result = response.response.text();
             if (result) {
                 const updated = [...(history.get(message.channelId) || []), { role: 'user', parts: [{ text }, ...parts] },
                     { role: 'model', parts: [{ text: result }] }];
+                stage = 'history_save';
                 history.set(message.channelId, updated);
             }
+            stage = 'discord_send';
             await replyLong(message, result);
         } catch (error) {
-            log('error', 'Message processing failed:', error.message);
-            const content = error.status === 429 ? '目前請求太多，請稍後再試。'
-                : error.status === 503 ? '模型服務暫時不可用，請稍後再試。'
-                : error.status === 400 ? '模型拒絕此請求，請檢查附件或上下文大小，並確認目前模型支援 Google Search 與 URL Context（兩項工具永久啟用）。'
-                : '回應失敗，請確認模型支援此附件格式，或稍後再試。';
-            await replyLong(message, content);
+            const details = inspectError(error);
+            log('error', 'Message processing failed', { stage, status: details.status, blocked: details.blocked,
+                channelId: message.channelId, messageId: message.id, detail: details.message });
+            // A Discord send failure must not restart the response or repeat already sent chunks.
+            if (stage !== 'discord_send' && stage !== 'discord_permissions') {
+                try { await replyLong(message, errorMessage(error, stage)); }
+                catch (sendError) { log('error', 'Discord 錯誤通知發送失敗', { detail: sendError.message }); }
+            }
         }
     }).catch(error => log('error', 'Message handling failed:', error.message));
 });
