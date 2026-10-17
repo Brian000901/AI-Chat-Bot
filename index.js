@@ -3,7 +3,7 @@ const { Client, GatewayIntentBits, Collection, Events, REST, Routes, MessageFlag
 const { createGemini, readResponseText } = require('./lib/gemini');
 const fs = require('fs');
 const path = require('path');
-const JSONdb = require('simple-json-db');
+const { ChannelStore } = require('./lib/channels');
 const { splitMessage, createQueue, createSender, canUse, canSend } = require('./lib/runtime');
 const { buildParts, resolveParts } = require('./lib/attachments');
 const { HistoryStore, fitHistory } = require('./lib/history');
@@ -18,15 +18,13 @@ const fileManager = gemini.files;
 const history = new HistoryStore(path.join(__dirname, 'history'));
 const queue = createQueue();
 const send = createSender();
-const dbPath = path.join(__dirname, 'db/channels.json');
-fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-const db = new JSONdb(dbPath);
+const channels = new ChannelStore(path.join(__dirname, 'db/channels.json'));
 client.commands = new Collection();
 for (const file of fs.readdirSync(path.join(__dirname, 'commands')).filter(file => file.endsWith('.js'))) {
     const command = require(path.join(__dirname, 'commands', file));
     client.commands.set(command.data.name, command);
 }
-const context = { history, db, queue, setModel(name) {
+const context = { history, channels, queue, setModel(name) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,119}$/.test(name)) throw new Error('模型名稱格式不正確。');
     const envPath = path.join(__dirname, '.env');
     const original = fs.readFileSync(envPath, 'utf8');
@@ -79,7 +77,7 @@ async function replyLong(message, text) {
 
 client.on(Events.MessageCreate, message => {
     if (!message.inGuild() || message.author.bot || message.webhookId || message.content.startsWith('-#')) return;
-    if (!(db.get('channels') || []).includes(message.channelId) && !message.mentions.users.has(client.user.id)) return;
+    if (!channels.has(message.channelId) && !message.mentions.users.has(client.user.id)) return;
     queue(message.channelId, async () => {
         let stage = 'discord_permissions';
         try {
