@@ -1,21 +1,20 @@
 const { log } = require('./lib/logger');
 const { Client, GatewayIntentBits, Collection, Events, REST, Routes, MessageFlags } = require('discord.js');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { GoogleAIFileManager } = require('@google/generative-ai/server');
+const { createGemini, readResponseText } = require('./lib/gemini');
 const fs = require('fs');
 const path = require('path');
 const JSONdb = require('simple-json-db');
 const { splitMessage, createQueue, createSender, canUse, canSend } = require('./lib/runtime');
 const { buildParts, resolveParts } = require('./lib/attachments');
 const { HistoryStore, fitHistory } = require('./lib/history');
-const { WEB_TOOLS, WEB_INSTRUCTION, logToolUse } = require('./lib/web');
+const { logToolUse } = require('./lib/web');
 const { buildMessageContext } = require('./lib/message-context');
 const { inspectError, errorMessage } = require('./lib/errors');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_TOKEN);
-const fileManager = new GoogleAIFileManager(process.env.GEMINI_TOKEN, { timeout: 120000 });
+const gemini = createGemini(process.env.GEMINI_TOKEN);
+const fileManager = gemini.files;
 const history = new HistoryStore(path.join(__dirname, 'history'));
 const queue = createQueue();
 const send = createSender();
@@ -93,13 +92,7 @@ client.on(Events.MessageCreate, message => {
             const parts = await buildParts(message.attachments, fileManager);
             await message.channel.sendTyping().catch(error => log('warn', 'Discord 輸入中提示失敗', { error: error.message }));
             stage = 'generation_setup';
-            const model = genAI.getGenerativeModel({
-                model: process.env.MODEL,
-                systemInstruction: fs.readFileSync(path.join(__dirname, 'prompt.md'), 'utf8') + '\n\n' + WEB_INSTRUCTION,
-                tools: WEB_TOOLS,
-                safetySettings: ['HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT', 'HARM_CATEGORY_HARASSMENT']
-                    .map(category => ({ category, threshold: 'BLOCK_NONE' })),
-            }, { timeout: 120000 });
+            const systemInstruction = fs.readFileSync(path.join(__dirname, 'prompt.md'), 'utf8');
             const previous = fitHistory(history.get(message.channelId) || [], parts);
             const fileCache = new Map();
             const apiHistory = [];
@@ -107,13 +100,11 @@ client.on(Events.MessageCreate, message => {
             for (const record of previous) apiHistory.push({ ...record, parts: await resolveParts(record.parts, fileManager, fileCache) });
             const currentParts = [{ text }, ...await resolveParts(parts, fileManager, fileCache)];
             stage = 'generation';
-            const chat = model.startChat({
-                generationConfig: { temperature: 1, topP: 0.95, topK: 40, maxOutputTokens: 8192, responseMimeType: 'text/plain' },
-                history: apiHistory,
+            const response = await gemini.generate({
+                model: process.env.MODEL, systemInstruction, history: apiHistory, parts: currentParts,
             });
-            const response = await chat.sendMessage(currentParts);
-            logToolUse(response.response, { guildId: message.guildId, channelId: message.channelId, messageId: message.id });
-            const result = response.response.text();
+            logToolUse(response, { guildId: message.guildId, channelId: message.channelId, messageId: message.id });
+            const result = readResponseText(response);
             if (result) {
                 const updated = [...(history.get(message.channelId) || []), { role: 'user', parts: [{ text }, ...parts] },
                     { role: 'model', parts: [{ text: result }] }];
