@@ -27,7 +27,7 @@ for (const file of fs.readdirSync(path.join(__dirname, 'commands')).filter(file 
     const command = require(path.join(__dirname, 'commands', file));
     client.commands.set(command.data.name, command);
 }
-const context = { history, db, setModel(name) {
+const context = { history, db, queue, setModel(name) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,119}$/.test(name)) throw new Error('模型名稱格式不正確。');
     const envPath = path.join(__dirname, '.env');
     const original = fs.readFileSync(envPath, 'utf8');
@@ -42,7 +42,7 @@ client.once(Events.ClientReady, async () => {
     log('success', 'Discord 已登入', { bot: client.user.tag, model: process.env.MODEL });
     try {
         const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID || client.user.id), {
+        await rest.put(Routes.applicationCommands(client.user.id), {
             body: [...client.commands.values()].map(command => command.data.toJSON()),
         });
         log('success', '斜線指令註冊完成');
@@ -58,9 +58,8 @@ client.on(Events.InteractionCreate, async interaction => {
             await interaction.reply({ content: '你沒有權限使用此指令，或此指令無法在私訊使用。', flags: MessageFlags.Ephemeral });
             return;
         }
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         history.bind(interaction.channelId, interaction.guildId);
-        await queue(interaction.channelId, () => command.execute(interaction, context));
+        await command.execute(interaction, context);
     } catch (error) {
         log('error', 'Command failed:', error.message);
         const content = '指令執行失敗，請檢查參數或稍後再試。';
@@ -88,11 +87,6 @@ client.on(Events.MessageCreate, message => {
             history.bind(message.channelId, message.guildId);
             const member = message.guild.members.me || await message.guild.members.fetchMe();
             if (!canSend(message.channel, member)) return;
-            if (/^!(reset|pop|model)(?:\s|$)/i.test(message.content)) {
-                stage = 'discord_send';
-                await replyLong(message, '管理指令已改為 /reset、/pop、/model，請使用斜線指令。');
-                return;
-            }
             stage = 'message_context';
             const text = JSON.stringify(await buildMessageContext(message, client.user.id));
             stage = 'attachment_upload';
